@@ -9,6 +9,15 @@
 #include <BLEEddystoneTLM.h>
 #include <BLEBeacon.h>
 
+#include "wifi.h"
+#include "mqtt.h"
+
+//#define FULL_LOGS
+
+#define CYCLE_DURATION 500
+#define SECOND_IN_CYCLE ((1000.0 / (float)CYCLE_DURATION))
+#define CYCLE_IN_SECOND (((float)CYCLE_DURATION / 1000.0))
+
 typedef struct SEQ{
   const char* name;
   const char* desc;
@@ -27,7 +36,7 @@ typedef struct TIME{
   int count;
 };
 
-int TIMER(TIME* tm, bool expression)
+float TIMER(TIME* tm, bool expression)
 {
     if(expression == false)
       tm->count = 0;
@@ -35,15 +44,17 @@ int TIMER(TIME* tm, bool expression)
     {
       tm->count++;
       
+#if defined(FULL_LOGS)
       Serial.print("TIMER : ");
       Serial.print(tm->name);
       Serial.print("(");
       Serial.print(tm->count);
       Serial.print(")");
       Serial.println();
+#endif
     }
 
-    return tm->count;
+    return (float)tm->count * CYCLE_IN_SECOND;
 }
 
 void TIMER_Init(TIME* tm, const char* name)
@@ -54,17 +65,43 @@ void TIMER_Init(TIME* tm, const char* name)
 
 void TIMER_Raz(TIME* tm)
 {
+#if defined(FULL_LOGS)
   Serial.print("TIMER_Raz : ");
   Serial.print(tm->name);
   Serial.println();
+#endif
   tm->count = 0;
+}
+
+void SEQ_Debug(SEQ* seq) {
+  Serial.print("SEQ_Debug");
+  char topic[100];
+  char value[100];
+
+  snprintf(topic, sizeof(topic), "esp32/seq/%s/init", seq->name);
+  snprintf(value, sizeof(value), "%s", seq->init);
+  publishMqtt(topic, value);
+
+  snprintf(topic, sizeof(topic), "esp32/seq/%s/initialized", seq->name);
+  snprintf(value, sizeof(value), "%s", seq->initialized);
+  publishMqtt(topic, value);
+
+  snprintf(topic, sizeof(topic), "esp32/seq/%s/etape", seq->name);
+  snprintf(value, sizeof(value), "%s", seq->etape);
+  publishMqtt(topic, value);
+
+  snprintf(topic, sizeof(topic), "esp32/seq/%s/duree", seq->name);
+  snprintf(value, sizeof(value), "%s sec", seq->duree);
+  publishMqtt(topic, value);
 }
 
 void SEQ_Init(SEQ * seq, const char* name, void (*func)(SEQ *))
 {
+#if defined(FULL_LOGS)
   Serial.print("SEQ_Init : ");
   Serial.print(seq->name);
   Serial.println();
+#endif
   seq->init = 1;
   seq->initialized = 0;
   seq->name = name;
@@ -78,9 +115,11 @@ void SEQ_Init(SEQ * seq, const char* name, void (*func)(SEQ *))
  
 void SEQ_Reset(SEQ * seq)
 {
+#if defined(FULL_LOGS)
   Serial.print("SEQ_Reset : ");
   Serial.print(seq->name);
   Serial.println();
+#endif
   seq->init = 1;
   seq->initialized = 0;
   seq->etape = 0;
@@ -90,7 +129,6 @@ void SEQ_Reset(SEQ * seq)
  
 void SEQ_Run(SEQ * seq)
 {
-  
   // Changement desc
   if(seq->desc_prec != seq->desc)
   {
@@ -120,26 +158,24 @@ void SEQ_Run(SEQ * seq)
   }
 
   seq->func(seq);
-  
-  if(seq->init == 1)
-  {
-      seq->init = 0;
-  }
 }
  
 struct SEQ G7_Reset;
 struct SEQ G7_Principal;
+struct SEQ G7_Commandes;
 
 struct TIME TIMER_Echo;
 struct TIME TIMER_Echo2;
 struct TIME TIMER_Reset;
 struct TIME TIMER_Ouverture;
+struct TIME TIMER_Reconnect;
 
 int IN_Echo1;
 int IN_Echo2;
 int IN_PortillonOuvert; // (0=fermé,1=ouvert)
 int IN_PortailOuvert; // (0=fermé,1=ouvert)
 int IN_BoutonReset;
+int IN_MqttCommand;
 
 int OUT_OuverturePortail;
 int OUT_DeverrouillagePortillon;
@@ -181,6 +217,9 @@ const std::string Tag_SmartTagA = std::string("0000fd5a-0000-1000-8000-00805f9b3
 
 // Temps d'attente après ouverture portail
 #define PARAM_TIMER_OUVERTURE 10 //En seconds
+
+// Temps d'attente avant reconnection
+#define PARAM_TIMER_RECONNECT 5 // 30 //En seconds
 
 BLEScan *pBLEScan;
 
@@ -232,13 +271,19 @@ void EndofScan(BLEScanResults results) {
 
 void setup() {
 
+  setupWifi();
+
+  setupMqtt();
+
   SEQ_Init(&G7_Principal, "Principal", g7_principal);
   SEQ_Init(&G7_Reset, "Reset", g7_reset);
+  SEQ_Init(&G7_Commandes, "Commandes", g7_commandes);
 
   TIMER_Init(&TIMER_Echo, "Echo portail");
   TIMER_Init(&TIMER_Echo2, "Echo portillon");
   TIMER_Init(&TIMER_Ouverture, "Attente ouverture portail");
   TIMER_Init(&TIMER_Reset, "Reset");
+  TIMER_Init(&TIMER_Reconnect, "Attente reconnection");
 
   Serial.begin(9600);
 
@@ -261,6 +306,10 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
 
   digitalWrite(LED_BUILTIN, LOW);
+  
+  // fonctionne en HIGH par défaut (inactif)
+  digitalWrite(PIN_OPEN1, HIGH);
+  digitalWrite(PIN_CLOS1, HIGH);
 
   OUT_Led = LED_VERT;
   
@@ -292,12 +341,13 @@ void loop()
 
   SEQ_Run(&G7_Principal);
   SEQ_Run(&G7_Reset);
+  SEQ_Run(&G7_Commandes);
 
   Outputs();
 
   Commandes();
 
-  delay(1000);
+  delay(CYCLE_DURATION);
   
   digitalWrite(LED_BUILTIN, G7_Principal.duree % 2 == 0 ? LOW : HIGH);
 }
@@ -309,6 +359,8 @@ void Inputs()
   IN_PortillonOuvert = digitalRead(PIN_STAT2);
   IN_BoutonReset = digitalRead(PIN_BUTT1);
 
+  IN_MqttCommand = checkMqtt();
+
   /*if(OUT_EchoTrigger)
   {*/
     digitalWrite(PIN_TRIG1, LOW);
@@ -319,10 +371,10 @@ void Inputs()
     
     auto duration = pulseIn(PIN_ECHO1, HIGH);
     auto distance = (duration*.0343)/2;
-//#if DEBUG
+#if defined(FULL_LOGS)
     Serial.print("distance1: ");
     Serial.println(distance);
-//#endif
+#endif
     IN_Echo1 = distance > 1.0 && distance < 50.0 ? 1 : 0;
 
     delayMicroseconds(10);
@@ -335,10 +387,10 @@ void Inputs()
     
     duration = pulseIn(PIN_ECHO2, HIGH);
     distance = (duration*.0343)/2;
-//#if DEBUG
+#if defined(FULL_LOGS)
     Serial.print("distance2: ");
     Serial.println(distance);
-//#endif
+#endif
     IN_Echo2 = distance > 1.0 && distance < 50.0 ? 1 : 0;
   /*}
   else
@@ -349,22 +401,24 @@ void Inputs()
     digitalWrite(PIN_TRIG2, LOW);
   }*/
 
-
-
 }
 
 void Outputs()
 {
-  OUT_OuverturePortail = G7_Principal.etape == 40 && G7_Principal.etape_front ? 1 : 0;
+  OUT_OuverturePortail = (G7_Principal.etape == 40 && G7_Principal.etape_front) || (G7_Commandes.etape == 10 && G7_Commandes.etape_front) ? 1 : 0;
   OUT_DeverrouillagePortillon = G7_Principal.etape == 41 ? 1 : 0;
-  OUT_Led = G7_Reset.etape == 10 ? LED_ORANGE : G7_Principal.etape == 11 ? LED_ROUGE : LED_VERT;
+  OUT_Led = G7_Reset.etape == 10 || G7_Commandes.etape == 11 ? LED_ORANGE : G7_Principal.etape == 11 ? LED_ROUGE : LED_VERT;
   OUT_EchoTrigger = G7_Principal.etape == 10 || G7_Principal.etape == 30 ? 1 : 0;
+  
+  //SEQ_Debug(&G7_Principal);
+  //SEQ_Debug(&G7_Reset);
+  //SEQ_Debug(&G7_Commandes);
 }
 
 void Commandes()
 {
-  digitalWrite(PIN_OPEN1, OUT_OuverturePortail == 1 ? HIGH : LOW);
-  digitalWrite(PIN_CLOS1, OUT_DeverrouillagePortillon == 1 ? HIGH : LOW);
+  digitalWrite(PIN_OPEN1, OUT_OuverturePortail == 1 ? LOW : HIGH);
+  digitalWrite(PIN_CLOS1, OUT_DeverrouillagePortillon == 1 ? LOW :HIGH );
 
   switch(OUT_Led){
     case LED_VERT:
@@ -394,8 +448,11 @@ void g7_principal(SEQ * seq)
 {
   if(seq->init == 1)
   {
+    seq->init = 0;
+
     UUID_Identifie = 0;
     bEndofScan = true;
+
     seq->initialized = 1;
     return;
   }
@@ -576,6 +633,7 @@ void g7_reset(SEQ * seq)
 {
   if(seq->init == 1)
   {
+      seq->init = 0;
       seq->initialized = 1;
       return;
   }
@@ -620,3 +678,100 @@ void g7_reset(SEQ * seq)
   }
 }
  
+ 
+void g7_commandes(SEQ * seq)
+{
+  if(seq->init == 1)
+  {
+      seq->init = 0;
+
+      if(connectWifi() == 0)
+        return;
+
+      if(connectMqtt() == 0)
+        return;
+
+      seq->initialized = 1;
+      return;
+  }
+
+  // Mqtt check
+  if(seq->etape == 0)
+  {
+    seq->desc = "Initialisation";
+
+    if(seq->initialized == 1)
+      seq->etape = 1;//OK
+    else
+      seq->etape = 11;//Erreur
+
+    return;
+  }
+  
+  
+  // Commande ?
+  if(seq->etape == 1)
+  {
+    seq->desc = "Check MQTT";
+
+//#if defined(FULL_LOGS)
+    Serial.print("IN_MqttCommand: ");
+    Serial.println(IN_MqttCommand);
+    Serial.print("IN_PortailOuvert: ");
+    Serial.println(IN_PortailOuvert);
+    Serial.print("G7_Principal.etape: ");
+    Serial.println(G7_Principal.etape);
+//#endif
+
+    if(IN_MqttCommand == CMD_OPEN && IN_PortailOuvert == 0 && G7_Principal.etape != 40)
+    {
+      seq->etape = 10;
+    }
+
+    return;
+  }
+  
+  // Ouverture portail
+  if(seq->etape == 10)
+  {
+      seq->desc = "Ouverture portail";
+
+      if(seq->etape_front)
+      {
+        TIMER_Raz(&TIMER_Ouverture);
+      }
+
+      // Portail ouvert ?
+      if(IN_PortailOuvert == 1 && TIMER(&TIMER_Ouverture, true) > PARAM_TIMER_OUVERTURE)
+      {
+        seq->desc = "Portail ouvert";
+        seq->etape = 0;
+      }
+
+      return;
+  }
+  
+  // Erreur
+  if(seq->etape == 11)
+  {
+      seq->desc = "Erreur initialisation, attente reconnection...";
+      
+      // bleu
+      OUT_Led = LED_BLUE;
+
+      if(seq->etape_front)
+      {
+        TIMER_Raz(&TIMER_Reconnect);
+      }
+
+      // Attente 30 sec
+      if(TIMER(&TIMER_Reconnect, true) > PARAM_TIMER_RECONNECT)
+      {
+        seq->desc = "reconnect";
+        SEQ_Reset(seq);
+      }
+
+      return;
+  }
+  
+}
