@@ -7,7 +7,8 @@
 void setupMqtt();
 int connectMqtt();
 int checkMqtt();
-void publishMqtt(const char* topic, const char* value);
+void publishSeqMqtt(const char* name, int init, int initialized, int etape, int duree);
+
 
 #define CMD_NONE 0
 #define CMD_OPEN 1

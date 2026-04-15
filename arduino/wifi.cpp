@@ -1,11 +1,25 @@
 #include "wifi.h"
 
+//const char* ssid = "aceteam_ext";
+//const char* password = "uGe395qLM%@Fza740%#WW6538!";
 const char* ssid = "aceteam2G";
 const char* password = "emyleplusbeaudesbebes";
 
+void checkSignal() {
+  int n = WiFi.scanNetworks();
+  for (int i = 0; i < n; ++i) {
+    Serial.print("Signal trouvé : ");
+    Serial.print(WiFi.SSID(i));
+    Serial.print(": ");
+    Serial.print(WiFi.RSSI(i)); // Puissance en dBm
+    Serial.println(" dBm");
+  }
+}
+
 void setupWifi() {
     Serial.println("Connexion au WiFi...");
-    WiFi.begin(ssid, password);
+    checkSignal();
+    WiFi.begin(ssid, password, 0, NULL, true);
 }
 
 int connectWifi() {
@@ -20,7 +34,9 @@ int connectWifi() {
     }
 
     if (status == WL_IDLE_STATUS ) {
-        Serial.println("Connexion au WiFi en cours...");
+        Serial.print("Connexion au WiFi ");
+        Serial.print(ssid);
+        Serial.println(" en cours... ");
         return 0;
     }
 

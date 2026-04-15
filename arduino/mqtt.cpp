@@ -1,7 +1,7 @@
 #include "mqtt.h"
 
 // MQTT
-const char* mqtt_server = "192.168.1.23"; // IP du broker MQTT
+const char* mqtt_server = "192.168.1.10"; // IP du broker MQTT
 const char* subscribe = "esp32/commands";
 const char* id = "esp32";
 const char* user = "home";
@@ -82,10 +82,18 @@ int checkMqtt() {
   return mqtt_command;
 }
 
-void publishMqtt(const char* topic, const char* value) {
+void publishSeqMqtt(const char* name, int init, int initialized, int etape, int duree) {
+  static char topic[80];
+  static char payload[80];
 
-  if(client.connected())
-  {
-      client.publish(topic, value);
+  snprintf(topic, sizeof(topic), "esp32/seq/%s", name);
+
+  if(client.connected()) {
+    // On crée un format JSON : {"init":1,"initd":0,"et":3,"dur":1500}
+    snprintf(payload, sizeof(payload), 
+             "{\"init\":%d,\"initd\":%d,\"etape\":%d,\"duree\":%d}", 
+             init, initialized, etape, duree);
+    
+    client.publish(topic, payload);
   }
 }

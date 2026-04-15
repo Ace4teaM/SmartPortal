@@ -74,25 +74,18 @@ void TIMER_Raz(TIME* tm)
 }
 
 void SEQ_Debug(SEQ* seq) {
-  Serial.print("SEQ_Debug");
-  char topic[100];
-  char value[100];
+  Serial.print(seq->name);
+  Serial.print(" -> init:");
+  Serial.print(seq->init);
+  Serial.print(" -> initialized:");
+  Serial.print(seq->initialized);
+  Serial.print(" -> etape:");
+  Serial.print(seq->etape);
+  Serial.print(" -> duree:");
+  Serial.print(seq->duree);
+  Serial.println();
 
-  snprintf(topic, sizeof(topic), "esp32/seq/%s/init", seq->name);
-  snprintf(value, sizeof(value), "%s", seq->init);
-  publishMqtt(topic, value);
-
-  snprintf(topic, sizeof(topic), "esp32/seq/%s/initialized", seq->name);
-  snprintf(value, sizeof(value), "%s", seq->initialized);
-  publishMqtt(topic, value);
-
-  snprintf(topic, sizeof(topic), "esp32/seq/%s/etape", seq->name);
-  snprintf(value, sizeof(value), "%s", seq->etape);
-  publishMqtt(topic, value);
-
-  snprintf(topic, sizeof(topic), "esp32/seq/%s/duree", seq->name);
-  snprintf(value, sizeof(value), "%s sec", seq->duree);
-  publishMqtt(topic, value);
+  publishSeqMqtt(seq->name, seq->init, seq->initialized, seq->etape, seq->duree);
 }
 
 void SEQ_Init(SEQ * seq, const char* name, void (*func)(SEQ *))
@@ -191,7 +184,7 @@ bool bEndofScan = true; // false si scan en cours
 
 #define PIN_ECHO1 10 // echo portillon
 #define PIN_ECHO2 7 // echo portail
-#define PIN_OPEN1 4 // ouverture portail
+#define PIN_OPEN1 4 // o 
 #define PIN_CLOS1 5 // verrouillage portillon
 #define PIN_STAT1 2 // portail fermé
 #define PIN_STAT2 6 // portillon fermé
@@ -410,9 +403,9 @@ void Outputs()
   OUT_Led = G7_Reset.etape == 10 || G7_Commandes.etape == 11 ? LED_ORANGE : G7_Principal.etape == 11 ? LED_ROUGE : LED_VERT;
   OUT_EchoTrigger = G7_Principal.etape == 10 || G7_Principal.etape == 30 ? 1 : 0;
   
-  //SEQ_Debug(&G7_Principal);
-  //SEQ_Debug(&G7_Reset);
-  //SEQ_Debug(&G7_Commandes);
+  SEQ_Debug(&G7_Principal);
+  SEQ_Debug(&G7_Reset);
+  SEQ_Debug(&G7_Commandes);
 }
 
 void Commandes()
@@ -719,8 +712,6 @@ void g7_commandes(SEQ * seq)
     Serial.println(IN_MqttCommand);
     Serial.print("IN_PortailOuvert: ");
     Serial.println(IN_PortailOuvert);
-    Serial.print("G7_Principal.etape: ");
-    Serial.println(G7_Principal.etape);
 //#endif
 
     if(IN_MqttCommand == CMD_OPEN && IN_PortailOuvert == 0 && G7_Principal.etape != 40)
