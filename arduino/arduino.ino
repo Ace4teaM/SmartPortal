@@ -184,7 +184,7 @@ bool bEndofScan = true; // false si scan en cours
 
 #define PIN_ECHO1 10 // echo portillon
 #define PIN_ECHO2 7 // echo portail
-#define PIN_OPEN1 4 // o 
+#define PIN_OPEN1 4 // ouverture portail 
 #define PIN_CLOS1 5 // verrouillage portillon
 #define PIN_STAT1 2 // portail fermé
 #define PIN_STAT2 6 // portillon fermé
@@ -300,9 +300,8 @@ void setup() {
 
   digitalWrite(LED_BUILTIN, LOW);
   
-  // fonctionne en HIGH par défaut (inactif)
-  digitalWrite(PIN_OPEN1, HIGH);
-  digitalWrite(PIN_CLOS1, HIGH);
+  digitalWrite(PIN_OPEN1, LOW);
+  digitalWrite(PIN_CLOS1, LOW);
 
   OUT_Led = LED_VERT;
   
@@ -348,8 +347,8 @@ void loop()
 
 void Inputs()
 {
-  IN_PortailOuvert = digitalRead(PIN_STAT1);
-  IN_PortillonOuvert = digitalRead(PIN_STAT2);
+  IN_PortailOuvert = digitalRead(PIN_STAT1) == LOW; // logique inverse avec INPUT_PULLUP
+  IN_PortillonOuvert = digitalRead(PIN_STAT2) == LOW; // logique inverse avec INPUT_PULLUP
   IN_BoutonReset = digitalRead(PIN_BUTT1);
 
   IN_MqttCommand = checkMqtt();
@@ -410,8 +409,8 @@ void Outputs()
 
 void Commandes()
 {
-  digitalWrite(PIN_OPEN1, OUT_OuverturePortail == 1 ? LOW : HIGH);
-  digitalWrite(PIN_CLOS1, OUT_DeverrouillagePortillon == 1 ? LOW :HIGH );
+  digitalWrite(PIN_OPEN1, OUT_OuverturePortail == 1 ? HIGH : LOW);
+  digitalWrite(PIN_CLOS1, OUT_DeverrouillagePortillon == 1 ? HIGH : LOW);
 
   switch(OUT_Led){
     case LED_VERT:
