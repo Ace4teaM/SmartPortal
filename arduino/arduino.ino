@@ -164,20 +164,29 @@ struct TIME TIMER_Reset;
 struct TIME TIMER_Ouverture;
 struct TIME TIMER_Reconnect;
 
-int IN_Echo1;
-int IN_Echo2;
-int IN_PortillonOuvert; // (0=fermé,1=ouvert)
-int IN_PortailOuvert; // (0=fermé,1=ouvert)
-int IN_BoutonReset;
-int IN_MqttCommand;
+struct _IN
+{
+  int Echo1;
+  int Echo2;
+  int PortillonOuvert; // (0=fermé,1=ouvert)
+  int PortailOuvert; // (0=fermé,1=ouvert)
+  int BoutonReset;
+  int MqttCommand;
+}IN, IN_PREV;
 
-int OUT_OuverturePortail;
-int OUT_DeverrouillagePortillon;
-int OUT_Led;
-int OUT_EchoTrigger;
+struct _OUT
+{
+  int OuverturePortail;
+  int DeverrouillagePortillon;
+  int Led;
+  int EchoTrigger;
+}OUT, OUT_PREV;
 
-int UUID_Identifie; // numero du badge trouvé, 0 = aucun
-bool bEndofScan = true; // false si scan en cours
+struct _STATES
+{
+  int UUID_Identifie; // numero du badge trouvé, 0 = aucun
+  bool bEndofScan = true; // false si scan en cours
+}STATES, STATES_PREV;
 
 #define LED_VERT 1
 #define LED_ORANGE 2
@@ -243,9 +252,9 @@ void EndofScan(BLEScanResults results) {
 
           if (devUUID.toString().compare(Tag_VocolincA) == 0)
           {
-            UUID_Identifie = 1;
+            STATES.UUID_Identifie = 1;
             Serial.print("Found ServiceUUID: [");
-            Serial.print(UUID_Identifie);
+            Serial.print(STATES.UUID_Identifie);
             Serial.print("] ");
             Serial.print(devUUID.toString().c_str());
             Serial.println("");
@@ -253,9 +262,9 @@ void EndofScan(BLEScanResults results) {
           }
           if (devUUID.toString().compare(Tag_SmartTagA) == 0)
           {
-            UUID_Identifie = 2;
+            STATES.UUID_Identifie = 2;
             Serial.print("Found ServiceUUID: [");
-            Serial.print(UUID_Identifie);
+            Serial.print(STATES.UUID_Identifie);
             Serial.print("] ");
             Serial.print(devUUID.toString().c_str());
             Serial.println("");
@@ -264,10 +273,13 @@ void EndofScan(BLEScanResults results) {
         }
     }
     pBLEScan->clearResults(); // libère la mémoire
-    bEndofScan = true;
+    STATES.bEndofScan = true;
 }
 
 void setup() {
+  memset(&IN, 0, sizeof(_IN));
+  memset(&OUT, 0, sizeof(_OUT));
+  memset(&STATES, 0, sizeof(_STATES));
 
   setupWifi();
 
@@ -308,7 +320,7 @@ void setup() {
   digitalWrite(PIN_OPEN1, LOW);
   digitalWrite(PIN_CLOS1, LOW);
 
-  OUT_Led = LED_VERT;
+  OUT.Led = LED_VERT;
   
   
   BLEDevice::init("");
@@ -346,20 +358,61 @@ void loop()
   Commandes();
 
   delay(CYCLE_DURATION);
-  
+
   digitalWrite(LED_BUILTIN, count % 2 == 0 ? LOW : HIGH);
 
   count++;
+
+  
+#if defined(DEBUG)
+  if(G7_Principal.etape != G7_Principal.etape_prec)
+    SEQ_Debug(&G7_Principal);
+
+  if(G7_Reset.etape != G7_Reset.etape_prec)
+    SEQ_Debug(&G7_Reset);
+
+  if(G7_Commandes.etape != G7_Commandes.etape_prec)
+    SEQ_Debug(&G7_Commandes);
+
+  if(memcmp(&STATES, &STATES_PREV, sizeof(_STATES)) != 0)
+    publishStatesMqtt(
+      STATES.UUID_Identifie,
+      STATES.bEndofScan
+    );
+
+  if(memcmp(&IN, &IN_PREV, sizeof(_IN)) != 0)
+    publishInputsMqtt(
+      IN.Echo1,
+      IN.Echo2,
+      IN.PortillonOuvert,
+      IN.PortailOuvert,
+      IN.BoutonReset,
+      IN.MqttCommand
+    );
+    
+  if(memcmp(&OUT, &OUT_PREV, sizeof(_OUT)) != 0)
+    publishOutputsMqtt(
+      OUT.OuverturePortail,
+      OUT.DeverrouillagePortillon,
+      OUT.Led,
+      OUT.EchoTrigger
+    );
+#endif
+
+  // copie les états précédents
+  memcpy(&IN_PREV, &IN, sizeof(_IN));
+  memcpy(&OUT_PREV, &OUT, sizeof(_OUT));
+  memcpy(&STATES_PREV, &STATES, sizeof(_STATES));
 }
 
 
 void Inputs()
 {
-  IN_PortailOuvert = digitalRead(PIN_STAT1) == LOW; // logique inverse avec INPUT_PULLUP
-  IN_PortillonOuvert = digitalRead(PIN_STAT2) == LOW; // logique inverse avec INPUT_PULLUP
-  IN_BoutonReset = digitalRead(PIN_BUTT1);
+  IN.PortailOuvert = digitalRead(PIN_STAT1) == LOW; // logique inverse avec INPUT_PULLUP
+  IN.PortillonOuvert = digitalRead(PIN_STAT2) == LOW; // logique inverse avec INPUT_PULLUP
+  IN.BoutonReset = digitalRead(PIN_BUTT1);
 
-  IN_MqttCommand = checkMqtt();
+  IN.MqttCommand = checkMqtt();
 
   digitalWrite(PIN_TRIG1, LOW);
   delayMicroseconds(2);
@@ -374,7 +427,7 @@ void Inputs()
   Serial.print("distance1: ");
   Serial.println(distance);
 #endif
-  IN_Echo1 = distance > PARAM_DIST_ECHO_MIN && distance < PARAM_DIST_ECHO_MAX ? 1 : 0;
+  IN.Echo1 = distance > PARAM_DIST_ECHO_MIN && distance < PARAM_DIST_ECHO_MAX ? 1 : 0;
 
   delayMicroseconds(10);
 
@@ -392,47 +445,23 @@ void Inputs()
   Serial.print("distance2: ");
   Serial.println(distance);
 #endif
-  IN_Echo2 = distance > PARAM_DIST_ECHO_MIN && distance < PARAM_DIST_ECHO_MAX ? 1 : 0;
+  IN.Echo2 = distance > PARAM_DIST_ECHO_MIN && distance < PARAM_DIST_ECHO_MAX ? 1 : 0;
 }
 
 void Outputs()
 {
-  OUT_OuverturePortail = (G7_Principal.etape == 40 && G7_Principal.etape_front) || (G7_Commandes.etape == 10 && G7_Commandes.etape_front) ? 1 : 0;
-  OUT_DeverrouillagePortillon = G7_Principal.etape == 41 ? 1 : 0;
-  OUT_Led = G7_Reset.etape == 10 || G7_Commandes.etape == 11 ? LED_ORANGE : G7_Principal.etape == 11 ? LED_ROUGE : LED_VERT;
-  OUT_EchoTrigger = G7_Principal.etape == 10 || G7_Principal.etape == 30 ? 1 : 0;
-  
-#if defined(DEBUG)
-  if (count % 4 == 0) { // 2 sec
-    SEQ_Debug(&G7_Principal);
-    SEQ_Debug(&G7_Reset);
-    SEQ_Debug(&G7_Commandes);
-    publishStatesMqtt(
-      IN_Echo1,
-      IN_Echo2,
-      IN_PortillonOuvert,
-      IN_PortailOuvert,
-      IN_BoutonReset,
-      IN_MqttCommand,
-
-      OUT_OuverturePortail,
-      OUT_DeverrouillagePortillon,
-      OUT_Led,
-      OUT_EchoTrigger,
-
-      UUID_Identifie,
-      bEndofScan
-    );
-  }
-#endif
+  OUT.OuverturePortail = (G7_Principal.etape == 40 && G7_Principal.etape_front) || (G7_Commandes.etape == 10 && G7_Commandes.etape_front) ? 1 : 0;
+  OUT.DeverrouillagePortillon = G7_Principal.etape == 41 ? 1 : 0;
+  OUT.Led = G7_Reset.etape == 10 || G7_Commandes.etape == 11 ? LED_ORANGE : G7_Principal.etape == 11 ? LED_ROUGE : LED_VERT;
+  OUT.EchoTrigger = G7_Principal.etape == 10 || G7_Principal.etape == 30 ? 1 : 0;
 }
 
 void Commandes()
 {
-  digitalWrite(PIN_OPEN1, OUT_OuverturePortail == 1 ? HIGH : LOW);
-  digitalWrite(PIN_CLOS1, OUT_DeverrouillagePortillon == 1 ? HIGH : LOW);
+  digitalWrite(PIN_OPEN1, OUT.OuverturePortail == 1 ? HIGH : LOW);
+  digitalWrite(PIN_CLOS1, OUT.DeverrouillagePortillon == 1 ? HIGH : LOW);
 
-  switch(OUT_Led){
+  switch(OUT.Led){
     case LED_VERT:
       digitalWrite(LED_RED, HIGH);
       digitalWrite(LED_GREEN, LOW);
@@ -462,8 +491,8 @@ void g7_principal(SEQ * seq)
   {
     seq->init = 0;
 
-    UUID_Identifie = 0;
-    bEndofScan = true;
+    STATES.UUID_Identifie = 0;
+    STATES.bEndofScan = true;
 
     seq->initialized = 1;
     return;
@@ -490,7 +519,7 @@ void g7_principal(SEQ * seq)
       //...
 
       // Presence echo ?
-      if(IN_Echo1 == 1 || IN_Echo2 == 1)
+      if(IN.Echo1 == 1 || IN.Echo2 == 1)
       {
         seq->desc = "echo 1 ou 2 trouvé";
         seq->etape = 20;
@@ -506,7 +535,7 @@ void g7_principal(SEQ * seq)
       // Activation led rouge
 
       // Bouton Reset ?
-      if(IN_BoutonReset == 1)
+      if(IN.BoutonReset == 1)
       {
         seq->desc = "bouton reset";
         SEQ_Reset(seq);
@@ -524,13 +553,13 @@ void g7_principal(SEQ * seq)
       {
           // Lecture badge
           Serial.println("start scan");
-          bEndofScan = false;
-          UUID_Identifie = 0;
+          STATES.bEndofScan = false;
+          STATES.UUID_Identifie = 0;
           pBLEScan->start(PARAM_TIMER_SCAN_TAG, EndofScan);// appel non-bloquant jusque la fin du scan, assigne UUID_Identifie
       }
 
       // Lecture OK
-      if(bEndofScan == true)
+      if(STATES.bEndofScan == true)
       {
         seq->desc = "fin lecture badge";
         seq->etape = 21;
@@ -544,9 +573,9 @@ void g7_principal(SEQ * seq)
       seq->desc = "Identification badge";
 
       Serial.println("UUID_Identifie");
-      Serial.println(UUID_Identifie);
+      Serial.println(STATES.UUID_Identifie);
       // Identification OK ?
-      if(UUID_Identifie != 0)
+      if(STATES.UUID_Identifie != 0)
       {
         seq->desc = "identification OK";
         seq->etape = 30;
@@ -574,14 +603,14 @@ void g7_principal(SEQ * seq)
       //...
 
       // Presence echo 1et2 pendant 2sec, ouverture portail
-      if(TIMER(&TIMER_Echo, IN_Echo1 == 1 && IN_Echo2 == 1) > PARAM_TIMER_PRESENCE_ECHO_1_2)
+      if(TIMER(&TIMER_Echo, IN.Echo1 == 1 && IN.Echo2 == 1) > PARAM_TIMER_PRESENCE_ECHO_1_2)
       {
         seq->desc = "Presence echo 1et2 pendant 2sec, ouverture portail...";
         seq->etape = 40;
       }
 
       // Autre (Echo 1 ou 2 pendant 2sec), ouverture portillon
-      if(TIMER(&TIMER_Echo2, (IN_Echo1 == 1 || IN_Echo2 == 1) && (IN_Echo1 != IN_Echo2)) > PARAM_TIMER_PRESENCE_ECHO_1_2)
+      if(TIMER(&TIMER_Echo2, (IN.Echo1 == 1 || IN.Echo2 == 1) && (IN.Echo1 != IN.Echo2)) > PARAM_TIMER_PRESENCE_ECHO_1_2)
       {
         seq->desc = "Presence echo autre (!= 1 et 2), ouverture portillon";
         seq->etape = 41;
@@ -600,7 +629,7 @@ void g7_principal(SEQ * seq)
       }
 
       // Portail ouvert ?
-      if(IN_PortailOuvert == 1 && TIMER(&TIMER_Ouverture, true) > PARAM_TIMER_OUVERTURE)
+      if(IN.PortailOuvert == 1 && TIMER(&TIMER_Ouverture, true) > PARAM_TIMER_OUVERTURE)
       {
         seq->desc = "Portail ouvert";
         seq->etape = 42;
@@ -617,7 +646,7 @@ void g7_principal(SEQ * seq)
       //...
 
       // Attente perte Identification et portillon fermé pour verrouillage ?
-      if(UUID_Identifie == 0 && IN_PortillonOuvert == 0)
+      if(STATES.UUID_Identifie == 0 && IN.PortillonOuvert == 0)
       {
         seq->desc = "Perte Identification et portillon fermé";
         seq->etape = 10;
@@ -631,7 +660,7 @@ void g7_principal(SEQ * seq)
       seq->desc = "Portail ouvert";
 
       // Portail fermé
-      if(IN_PortailOuvert == 0)
+      if(IN.PortailOuvert == 0)
       {
         seq->desc = "Portail fermé";
         seq->etape = 0;
@@ -667,7 +696,7 @@ void g7_reset(SEQ * seq)
     }
     
     // bouton reset
-   /*  if(IN_BoutonReset == 1)
+   /*  if(IN.BoutonReset == 1)
     {
         seq->desc = "bouton reset";
       seq->etape = 10;
@@ -683,7 +712,7 @@ void g7_reset(SEQ * seq)
 
     SEQ_Reset(&G7_Principal);
     // orange
-    OUT_Led = LED_ORANGE;
+    OUT.Led = LED_ORANGE;
     
     seq->etape = 0;
     return;
@@ -719,19 +748,12 @@ void g7_commandes(SEQ * seq)
   {
     seq->desc = "Check MQTT";
 
-//#if defined(FULL_LOGS)
-    Serial.print("IN_MqttCommand: ");
-    Serial.println(IN_MqttCommand);
-    Serial.print("IN_PortailOuvert: ");
-    Serial.println(IN_PortailOuvert);
-//#endif
-
     if(statusWifi() != 1 || statusMqtt() != 1)
     {
       seq->etape = 0;
     }
 
-    if(IN_MqttCommand == CMD_OPEN && IN_PortailOuvert == 0 && G7_Principal.etape != 40)
+    if(IN.MqttCommand == CMD_OPEN && IN.PortailOuvert == 0 && G7_Principal.etape != 40)
     {
       seq->etape = 10;
     }
@@ -750,7 +772,7 @@ void g7_commandes(SEQ * seq)
       }
 
       // Portail ouvert ?
-      if(IN_PortailOuvert == 1 && TIMER(&TIMER_Ouverture, true) > PARAM_TIMER_OUVERTURE)
+      if(IN.PortailOuvert == 1 && TIMER(&TIMER_Ouverture, true) > PARAM_TIMER_OUVERTURE)
       {
         seq->desc = "Portail ouvert";
         seq->etape = 0;
@@ -765,7 +787,7 @@ void g7_commandes(SEQ * seq)
       seq->desc = "Erreur initialisation, attente reconnection...";
       
       // bleu
-      OUT_Led = LED_BLUE;
+      OUT.Led = LED_BLUE;
 
       if(seq->etape_front)
       {

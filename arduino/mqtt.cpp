@@ -106,20 +106,30 @@ void publishSeqMqtt(const char* name, int init, int initialized, int etape, int 
 }
 
 void publishStatesMqtt(
+  int UUID_Identifie,
+  bool bEndofScan
+) {
+
+  if(client.connected()) {
+    
+    snprintf(topic, sizeof(topic), "esp32/states/vars");
+
+    snprintf(payload, sizeof(payload), 
+             "{\"UUID_Identifie\":%d,\"bEndofScan\":%d}", 
+             UUID_Identifie, bEndofScan);
+    
+    client.publish(topic, payload);
+  }
+}
+
+
+void publishInputsMqtt(
   int IN_Echo1,
   int IN_Echo2,
   int IN_PortillonOuvert,
   int IN_PortailOuvert,
   int IN_BoutonReset,
-  int IN_MqttCommand,
-
-  int OUT_OuverturePortail,
-  int OUT_DeverrouillagePortillon,
-  int OUT_Led,
-  int OUT_EchoTrigger,
-
-  int UUID_Identifie,
-  bool bEndofScan
+  int IN_MqttCommand
 ) {
 
   if(client.connected()) {
@@ -131,20 +141,24 @@ void publishStatesMqtt(
              IN_Echo1, IN_Echo2, IN_PortillonOuvert, IN_PortailOuvert, IN_BoutonReset, IN_MqttCommand);
     
     client.publish(topic, payload);
+  }
+}
+
+
+void publishOutputsMqtt(
+  int OUT_OuverturePortail,
+  int OUT_DeverrouillagePortillon,
+  int OUT_Led,
+  int OUT_EchoTrigger
+) {
+
+  if(client.connected()) {
     
     snprintf(topic, sizeof(topic), "esp32/states/out");
 
     snprintf(payload, sizeof(payload), 
              "{\"OUT_OuverturePortail\":%d,\"OUT_DeverrouillagePortillon\":%d,\"OUT_Led\":%d,\"OUT_EchoTrigger\":%d}", 
              OUT_OuverturePortail, OUT_DeverrouillagePortillon, OUT_Led, OUT_EchoTrigger);
-    
-    client.publish(topic, payload);
-    
-    snprintf(topic, sizeof(topic), "esp32/states/vars");
-
-    snprintf(payload, sizeof(payload), 
-             "{\"UUID_Identifie\":%d,\"bEndofScan\":%d}", 
-             UUID_Identifie, bEndofScan);
     
     client.publish(topic, payload);
   }
