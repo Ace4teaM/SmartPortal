@@ -3,6 +3,7 @@
 
 #include <WiFi.h>
 
+int statusWifi();
 void setupWifi();
 int connectWifi();
 

@@ -405,6 +405,22 @@ void Outputs()
   SEQ_Debug(&G7_Principal);
   SEQ_Debug(&G7_Reset);
   SEQ_Debug(&G7_Commandes);
+  publishStatesMqtt(
+    IN_Echo1,
+    IN_Echo2,
+    IN_PortillonOuvert,
+    IN_PortailOuvert,
+    IN_BoutonReset,
+    IN_MqttCommand,
+
+    OUT_OuverturePortail,
+    OUT_DeverrouillagePortillon,
+    OUT_Led,
+    OUT_EchoTrigger,
+
+    UUID_Identifie,
+    bEndofScan
+  );
 }
 
 void Commandes()
@@ -676,32 +692,25 @@ void g7_commandes(SEQ * seq)
   if(seq->init == 1)
   {
       seq->init = 0;
-
-      if(connectWifi() == 0)
-        return;
-
-      if(connectMqtt() == 0)
-        return;
-
       seq->initialized = 1;
       return;
   }
 
-  // Mqtt check
+  // Init (wifi et subscriber)
   if(seq->etape == 0)
   {
     seq->desc = "Initialisation";
 
-    if(seq->initialized == 1)
-      seq->etape = 1;//OK
-    else
+    if(connectWifi() == 0 || connectMqtt() == 0)
       seq->etape = 11;//Erreur
+
+    seq->etape = 1;//OK
 
     return;
   }
   
   
-  // Commande ?
+  // Check MQTT
   if(seq->etape == 1)
   {
     seq->desc = "Check MQTT";
@@ -712,6 +721,11 @@ void g7_commandes(SEQ * seq)
     Serial.print("IN_PortailOuvert: ");
     Serial.println(IN_PortailOuvert);
 //#endif
+
+    if(statusWifi() != 1 || statusMqtt() != 1)
+    {
+      seq->etape = 0;
+    }
 
     if(IN_MqttCommand == CMD_OPEN && IN_PortailOuvert == 0 && G7_Principal.etape != 40)
     {

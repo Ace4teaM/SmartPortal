@@ -22,6 +22,13 @@ void setupWifi() {
     WiFi.begin(ssid, password, 0, NULL, true);
 }
 
+int statusWifi() {
+  int status = WiFi.waitForConnectResult();
+  if (status == WL_CONNECTED)
+      return 1;
+  return 0;
+}
+
 int connectWifi() {
     int status = WiFi.waitForConnectResult();
 

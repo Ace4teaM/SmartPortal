@@ -4,10 +4,27 @@
 #include <PubSubClient.h>
 #include <WiFi.h>
 
+int statusMqtt();
 void setupMqtt();
 int connectMqtt();
 int checkMqtt();
 void publishSeqMqtt(const char* name, int init, int initialized, int etape, int duree);
+void publishStatesMqtt(
+  int IN_Echo1,
+  int IN_Echo2,
+  int IN_PortillonOuvert,
+  int IN_PortailOuvert,
+  int IN_BoutonReset,
+  int IN_MqttCommand,
+
+  int OUT_OuverturePortail,
+  int OUT_DeverrouillagePortillon,
+  int OUT_Led,
+  int OUT_EchoTrigger,
+
+  int UUID_Identifie,
+  bool bEndofScan
+);
 
 
 #define CMD_NONE 0
