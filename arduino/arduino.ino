@@ -13,6 +13,7 @@
 #include "mqtt.h"
 
 //#define FULL_LOGS
+#define DEBUG
 
 #define CYCLE_DURATION 500
 #define SECOND_IN_CYCLE ((1000.0 / (float)CYCLE_DURATION))
@@ -220,7 +221,7 @@ const std::string Tag_SmartTagA = std::string("0000fd5a-0000-1000-8000-00805f9b3
 
 BLEScan *pBLEScan;
 
-#if DEBUG
+#if defined(DEBUG)
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice device) {
       Serial.printf("Advertised Device: %s \n", device.toString().c_str());
@@ -229,7 +230,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 #endif
 
 void EndofScan(BLEScanResults results) {
-#if DEBUG
+#if defined(DEBUG)
     Serial.println("EndofScan");
 #endif
     for(int i=0;i<results.getCount();i++)
@@ -313,7 +314,7 @@ void setup() {
   BLEDevice::init("");
   BLEDevice::setMTU(23);//BLE spec default
   pBLEScan = BLEDevice::getScan(); //create new scan
-#if DEBUG
+#if defined(DEBUG)
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
 #endif
   pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
@@ -401,25 +402,29 @@ void Outputs()
   OUT_Led = G7_Reset.etape == 10 || G7_Commandes.etape == 11 ? LED_ORANGE : G7_Principal.etape == 11 ? LED_ROUGE : LED_VERT;
   OUT_EchoTrigger = G7_Principal.etape == 10 || G7_Principal.etape == 30 ? 1 : 0;
   
-  SEQ_Debug(&G7_Principal);
-  SEQ_Debug(&G7_Reset);
-  SEQ_Debug(&G7_Commandes);
-  publishStatesMqtt(
-    IN_Echo1,
-    IN_Echo2,
-    IN_PortillonOuvert,
-    IN_PortailOuvert,
-    IN_BoutonReset,
-    IN_MqttCommand,
+#if defined(DEBUG)
+  if (count % 4 == 0) { // 2 sec
+    SEQ_Debug(&G7_Principal);
+    SEQ_Debug(&G7_Reset);
+    SEQ_Debug(&G7_Commandes);
+    publishStatesMqtt(
+      IN_Echo1,
+      IN_Echo2,
+      IN_PortillonOuvert,
+      IN_PortailOuvert,
+      IN_BoutonReset,
+      IN_MqttCommand,
 
-    OUT_OuverturePortail,
-    OUT_DeverrouillagePortillon,
-    OUT_Led,
-    OUT_EchoTrigger,
+      OUT_OuverturePortail,
+      OUT_DeverrouillagePortillon,
+      OUT_Led,
+      OUT_EchoTrigger,
 
-    UUID_Identifie,
-    bEndofScan
-  );
+      UUID_Identifie,
+      bEndofScan
+    );
+  }
+#endif
 }
 
 void Commandes()
