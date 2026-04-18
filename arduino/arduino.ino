@@ -398,8 +398,7 @@ void Outputs()
 {
   OUT_OuverturePortail = (G7_Principal.etape == 40 && G7_Principal.etape_front) || (G7_Commandes.etape == 10 && G7_Commandes.etape_front) ? 1 : 0;
   OUT_DeverrouillagePortillon = G7_Principal.etape == 41 ? 1 : 0;
-  //OUT_Led = G7_Reset.etape == 10 || G7_Commandes.etape == 11 ? LED_ORANGE : G7_Principal.etape == 11 ? LED_ROUGE : LED_VERT;
-  OUT_Led = LED_VERT;
+  OUT_Led = G7_Reset.etape == 10 || G7_Commandes.etape == 11 ? LED_ORANGE : G7_Principal.etape == 11 ? LED_ROUGE : LED_VERT;
   OUT_EchoTrigger = G7_Principal.etape == 10 || G7_Principal.etape == 30 ? 1 : 0;
   
   SEQ_Debug(&G7_Principal);
