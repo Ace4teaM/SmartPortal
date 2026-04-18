@@ -37,6 +37,14 @@ void callback(char* topic, byte* message, unsigned int length) {
     {
       mqtt_command = CMD_CLOSE;
     }
+    if(messageTemp == "DB_UP")
+    {
+      mqtt_command = CMD_DB_UP;
+    }
+    if(messageTemp == "DB_DOWN")
+    {
+      mqtt_command = CMD_DB_DOWN;
+    }
   }
 }
 
@@ -107,7 +115,8 @@ void publishSeqMqtt(const char* name, int init, int initialized, int etape, int 
 
 void publishStatesMqtt(
   int UUID_Identifie,
-  bool bEndofScan
+  bool bEndofScan,
+  int rssi_add
 ) {
 
   if(client.connected()) {
@@ -115,8 +124,8 @@ void publishStatesMqtt(
     snprintf(topic, sizeof(topic), "esp32/states/vars");
 
     snprintf(payload, sizeof(payload), 
-             "{\"UUID_Identifie\":%d,\"bEndofScan\":%d}", 
-             UUID_Identifie, bEndofScan);
+             "{\"UUID_Identifie\":%d,\"bEndofScan\":%d,\"rssi_add\":%d}", 
+             UUID_Identifie, bEndofScan, rssi_add);
     
     client.publish(topic, payload);
   }

@@ -186,6 +186,7 @@ struct _STATES
 {
   int UUID_Identifie; // numero du badge trouvé, 0 = aucun
   bool bEndofScan = true; // false si scan en cours
+  int rssi_add = 0; // valeur compensatoire max RSSI
 }STATES, STATES_PREV;
 
 #define LED_VERT 1
@@ -222,52 +223,67 @@ const std::string Tag_SmartTagA = std::string("0000fd5a-0000-1000-8000-00805f9b3
 #define PARAM_TIMER_OUVERTURE 10 //En seconds
 
 // Temps d'attente avant reconnection
-#define PARAM_TIMER_RECONNECT 5 // 30 //En seconds
+#define PARAM_TIMER_RECONNECT 30 //En seconds
 
 // Distance de détection min/max de la présence d'une personne/voiture (>= min && <= max)
 #define PARAM_DIST_ECHO_MIN 1.0 // En cm
 #define PARAM_DIST_ECHO_MAX 50.0 // En cm
+
+// Signal max pour déclenchement
+// Le RSSI est une valeur négative exprimée en dBm.
+// Plus la valeur est proche de 0, plus l'appareil est près (ex: -40 dBm).
+// Plus la valeur est petite, plus l'appareil est loin (ex: -95 dBm).
+#define PARAM_BLE_TAG_RSSI_MAX -80
 
 BLEScan *pBLEScan;
 
 #if defined(DEBUG)
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice device) {
+#if defined(FULL_LOGS)
       Serial.printf("Advertised Device: %s \n", device.toString().c_str());
+#endif
     }
 };
 #endif
 
 void EndofScan(BLEScanResults results) {
-#if defined(DEBUG)
+#if defined(FULL_LOGS)
     Serial.println("EndofScan");
 #endif
     for(int i=0;i<results.getCount();i++)
     {
         BLEAdvertisedDevice device = results.getDevice(i);
 
-        if (device.haveServiceUUID())
+        // On récupère le RSSI
+        int rssi = device.getRSSI();
+        
+        if (device.haveServiceUUID() && rssi > (PARAM_BLE_TAG_RSSI_MAX + STATES.rssi_add))
         {
           BLEUUID devUUID = device.getServiceUUID();
 
           if (devUUID.toString().compare(Tag_VocolincA) == 0)
           {
             STATES.UUID_Identifie = 1;
+#if defined(FULL_LOGS)
             Serial.print("Found ServiceUUID: [");
             Serial.print(STATES.UUID_Identifie);
             Serial.print("] ");
             Serial.print(devUUID.toString().c_str());
             Serial.println("");
+#endif
             break;
           }
           if (devUUID.toString().compare(Tag_SmartTagA) == 0)
           {
             STATES.UUID_Identifie = 2;
+#if defined(FULL_LOGS)
             Serial.print("Found ServiceUUID: [");
             Serial.print(STATES.UUID_Identifie);
             Serial.print("] ");
             Serial.print(devUUID.toString().c_str());
             Serial.println("");
+#endif
             break;
           }
         }
@@ -303,7 +319,7 @@ void setup() {
   pinMode(PIN_CLOS1, OUTPUT);
   pinMode(PIN_STAT1, INPUT_PULLUP);
   pinMode(PIN_STAT2, INPUT_PULLUP);
-  pinMode(PIN_BUTT1, INPUT);
+  pinMode(PIN_BUTT1, INPUT_PULLUP);
   pinMode(PIN_TRIG1, OUTPUT);
   pinMode(PIN_TRIG2, OUTPUT);
 
@@ -349,6 +365,11 @@ void loop()
 {
   Inputs();
 
+  // TEMPORAIRE ----------------------------------------------------------------
+  // pour le moment on associe un seul echo
+  IN.Echo1 = IN.Echo2;
+  // TEMPORAIRE ----------------------------------------------------------------
+
   SEQ_Run(&G7_Principal);
   SEQ_Run(&G7_Reset);
   SEQ_Run(&G7_Commandes);
@@ -377,7 +398,8 @@ void loop()
   if(memcmp(&STATES, &STATES_PREV, sizeof(_STATES)) != 0)
     publishStatesMqtt(
       STATES.UUID_Identifie,
-      STATES.bEndofScan
+      STATES.bEndofScan,
+      STATES.rssi_add
     );
 
   if(memcmp(&IN, &IN_PREV, sizeof(_IN)) != 0)
@@ -410,7 +432,7 @@ void Inputs()
 {
   IN.PortailOuvert = digitalRead(PIN_STAT1) == LOW; // logique inverse avec INPUT_PULLUP
   IN.PortillonOuvert = digitalRead(PIN_STAT2) == LOW; // logique inverse avec INPUT_PULLUP
-  IN.BoutonReset = digitalRead(PIN_BUTT1);
+  IN.BoutonReset = digitalRead(PIN_BUTT1) == LOW; // logique inverse avec INPUT_PULLUP
 
   IN.MqttCommand = checkMqtt();
 
@@ -427,7 +449,10 @@ void Inputs()
   Serial.print("distance1: ");
   Serial.println(distance);
 #endif
-  IN.Echo1 = distance > PARAM_DIST_ECHO_MIN && distance < PARAM_DIST_ECHO_MAX ? 1 : 0;
+  if(duration > 0)
+    IN.Echo1 = distance > PARAM_DIST_ECHO_MIN && distance < PARAM_DIST_ECHO_MAX ? 1 : 0;
+  else
+    IN.Echo1 = 0;
 
   delayMicroseconds(10);
 
@@ -445,7 +470,11 @@ void Inputs()
   Serial.print("distance2: ");
   Serial.println(distance);
 #endif
-  IN.Echo2 = distance > PARAM_DIST_ECHO_MIN && distance < PARAM_DIST_ECHO_MAX ? 1 : 0;
+
+  if(duration > 0)
+    IN.Echo2 = distance > PARAM_DIST_ECHO_MIN && distance < PARAM_DIST_ECHO_MAX ? 1 : 0;
+  else
+    IN.Echo2 = 0;
 }
 
 void Outputs()
@@ -552,7 +581,9 @@ void g7_principal(SEQ * seq)
       if(seq->etape_front)
       {
           // Lecture badge
+#if defined(FULL_LOGS)
           Serial.println("start scan");
+#endif
           STATES.bEndofScan = false;
           STATES.UUID_Identifie = 0;
           pBLEScan->start(PARAM_TIMER_SCAN_TAG, EndofScan);// appel non-bloquant jusque la fin du scan, assigne UUID_Identifie
@@ -684,23 +715,23 @@ void g7_reset(SEQ * seq)
   {
       seq->desc = "Initialisation";
 
-  /*  if(seq->etape_front)
+    if(seq->etape_front || G7_Principal.etape != G7_Principal.etape_prec)
     {
       TIMER_Raz(&TIMER_Reset);
-    }*/
+    }
 
     // +10sec dans une étape et pas en initialisation ou erreur
-   if(G7_Principal.etape != 0 && G7_Principal.etape != 10 && G7_Principal.etape != 11 && G7_Principal.duree > PARAM_TIMER_BEFORE_RESET)
+    if(G7_Principal.etape != 0 && G7_Principal.etape != 10 && G7_Principal.etape != 11 && TIMER(&TIMER_Reset, true) > PARAM_TIMER_BEFORE_RESET /*&& G7_Principal.duree > PARAM_TIMER_BEFORE_RESET*/)
     {
       seq->etape = 10;
     }
     
     // bouton reset
-   /*  if(IN.BoutonReset == 1)
+    if(IN.BoutonReset == 1)
     {
         seq->desc = "bouton reset";
       seq->etape = 10;
-    }*/
+    }
 
     return;
   }
@@ -708,7 +739,7 @@ void g7_reset(SEQ * seq)
   // Reset !
   if(seq->etape == 10)
   {
-      seq->desc = "Reset !";
+    seq->desc = "Reset !";
 
     SEQ_Reset(&G7_Principal);
     // orange
@@ -750,12 +781,22 @@ void g7_commandes(SEQ * seq)
 
     if(statusWifi() != 1 || statusMqtt() != 1)
     {
-      seq->etape = 0;
+      seq->etape = 11;
     }
 
     if(IN.MqttCommand == CMD_OPEN && IN.PortailOuvert == 0 && G7_Principal.etape != 40)
     {
       seq->etape = 10;
+    }
+
+    if(IN.MqttCommand == CMD_DB_UP)
+    {
+      STATES.rssi_add += -1;
+    }
+
+    if(IN.MqttCommand == CMD_DB_DOWN)
+    {
+      STATES.rssi_add += 1;
     }
 
     return;

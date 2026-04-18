@@ -11,7 +11,8 @@ int checkMqtt();
 void publishSeqMqtt(const char* name, int init, int initialized, int etape, int duree);
 void publishStatesMqtt(
   int UUID_Identifie,
-  bool bEndofScan
+  bool bEndofScan,
+  int rssi_add
 );
 void publishInputsMqtt(
   int IN_Echo1,
@@ -32,5 +33,7 @@ void publishOutputsMqtt(
 #define CMD_NONE 0
 #define CMD_OPEN 1
 #define CMD_CLOSE 2
+#define CMD_DB_UP 3
+#define CMD_DB_DOWN 4
 
 #endif
