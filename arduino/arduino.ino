@@ -214,6 +214,10 @@ const std::string Tag_SmartTagA = std::string("0000fd5a-0000-1000-8000-00805f9b3
 // Temps d'attente avant reconnection
 #define PARAM_TIMER_RECONNECT 5 // 30 //En seconds
 
+// Distance de détection min/max de la présence d'une personne/voiture (>= min && <= max)
+#define PARAM_DIST_ECHO_MIN 1.0 // En cm
+#define PARAM_DIST_ECHO_MAX 50.0 // En cm
+
 BLEScan *pBLEScan;
 
 #if DEBUG
@@ -326,6 +330,7 @@ void setup() {
   Serial.println();
 }
 
+int count = 0;
 
 void loop()
 {
@@ -341,7 +346,9 @@ void loop()
 
   delay(CYCLE_DURATION);
   
-  digitalWrite(LED_BUILTIN, G7_Principal.duree % 2 == 0 ? LOW : HIGH);
+  digitalWrite(LED_BUILTIN, count % 2 == 0 ? LOW : HIGH);
+
+  count++;
 }
 
 
@@ -353,53 +360,46 @@ void Inputs()
 
   IN_MqttCommand = checkMqtt();
 
-  /*if(OUT_EchoTrigger)
-  {*/
-    digitalWrite(PIN_TRIG1, LOW);
-    delayMicroseconds(2);
-    digitalWrite(PIN_TRIG1, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(PIN_TRIG1, LOW);
-    
-    auto duration = pulseIn(PIN_ECHO1, HIGH);
-    auto distance = (duration*.0343)/2;
+  digitalWrite(PIN_TRIG1, LOW);
+  delayMicroseconds(2);
+  digitalWrite(PIN_TRIG1, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(PIN_TRIG1, LOW);
+  // Ajout d'un TIMEOUT de 20000 µs (~3 mètres max)
+  // Si rien n'est reçu après 20ms, la fonction rend la main immédiatement
+  auto duration = pulseIn(PIN_ECHO1, HIGH, 20000);
+  auto distance = (duration*.0343)/2; // cm
 #if defined(FULL_LOGS)
-    Serial.print("distance1: ");
-    Serial.println(distance);
+  Serial.print("distance1: ");
+  Serial.println(distance);
 #endif
-    IN_Echo1 = distance > 1.0 && distance < 50.0 ? 1 : 0;
+  IN_Echo1 = distance > PARAM_DIST_ECHO_MIN && distance < PARAM_DIST_ECHO_MAX ? 1 : 0;
 
-    delayMicroseconds(10);
+  delayMicroseconds(10);
 
-    digitalWrite(PIN_TRIG2, LOW);
-    delayMicroseconds(2);
-    digitalWrite(PIN_TRIG2, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(PIN_TRIG2, LOW);
-    
-    duration = pulseIn(PIN_ECHO2, HIGH);
-    distance = (duration*.0343)/2;
+  digitalWrite(PIN_TRIG2, LOW);
+  delayMicroseconds(2);
+  digitalWrite(PIN_TRIG2, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(PIN_TRIG2, LOW);
+  
+  // Ajout d'un TIMEOUT de 20000 µs (~3 mètres max)
+  // Si rien n'est reçu après 20ms, la fonction rend la main immédiatement
+  duration = pulseIn(PIN_ECHO2, HIGH, 20000);
+  distance = (duration*.0343)/2; // cm
 #if defined(FULL_LOGS)
-    Serial.print("distance2: ");
-    Serial.println(distance);
+  Serial.print("distance2: ");
+  Serial.println(distance);
 #endif
-    IN_Echo2 = distance > 1.0 && distance < 50.0 ? 1 : 0;
-  /*}
-  else
-  {
-    IN_Echo1 = 0;
-    IN_Echo2 = 0;
-    digitalWrite(PIN_TRIG1, LOW);
-    digitalWrite(PIN_TRIG2, LOW);
-  }*/
-
+  IN_Echo2 = distance > PARAM_DIST_ECHO_MIN && distance < PARAM_DIST_ECHO_MAX ? 1 : 0;
 }
 
 void Outputs()
 {
   OUT_OuverturePortail = (G7_Principal.etape == 40 && G7_Principal.etape_front) || (G7_Commandes.etape == 10 && G7_Commandes.etape_front) ? 1 : 0;
   OUT_DeverrouillagePortillon = G7_Principal.etape == 41 ? 1 : 0;
-  OUT_Led = G7_Reset.etape == 10 || G7_Commandes.etape == 11 ? LED_ORANGE : G7_Principal.etape == 11 ? LED_ROUGE : LED_VERT;
+  //OUT_Led = G7_Reset.etape == 10 || G7_Commandes.etape == 11 ? LED_ORANGE : G7_Principal.etape == 11 ? LED_ROUGE : LED_VERT;
+  OUT_Led = LED_VERT;
   OUT_EchoTrigger = G7_Principal.etape == 10 || G7_Principal.etape == 30 ? 1 : 0;
   
   SEQ_Debug(&G7_Principal);
