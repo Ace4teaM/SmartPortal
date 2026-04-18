@@ -1,9 +1,5 @@
 #include "wifi.h"
-
-//const char* ssid = "aceteam_ext";
-//const char* password = "uGe395qLM%@Fza740%#WW6538!";
-const char* ssid = "aceteam2G";
-const char* password = "emyleplusbeaudesbebes";
+#include "secrets.h"
 
 void checkSignal() {
   int n = WiFi.scanNetworks();
@@ -19,7 +15,7 @@ void checkSignal() {
 void setupWifi() {
     Serial.println("Connexion au WiFi...");
     checkSignal();
-    WiFi.begin(ssid, password, 0, NULL, true);
+    WiFi.begin(SECRET_SSID, SECRET_PASSWORD, 0, NULL, true);
 }
 
 int statusWifi() {
@@ -42,7 +38,7 @@ int connectWifi() {
 
     if (status == WL_IDLE_STATUS ) {
         Serial.print("Connexion au WiFi ");
-        Serial.print(ssid);
+        Serial.print(SECRET_SSID);
         Serial.println(" en cours... ");
         return 0;
     }
@@ -72,6 +68,7 @@ int connectWifi() {
         return WiFi.waitForConnectResult() == WL_CONNECTED ? 1 : 0;
     }
 
-    Serial.println("WiFi connecté");
+    Serial.print("WiFi connecté: ");
+    Serial.println(SECRET_SSID);
     return 1;
 }
