@@ -28,6 +28,9 @@ void publishOutputsMqtt(
   int OUT_Led,
   int OUT_EchoTrigger
 );
+void publishDebug(
+  const char* message
+);
 
 
 #define CMD_NONE 0
