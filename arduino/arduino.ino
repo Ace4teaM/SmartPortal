@@ -163,6 +163,7 @@ struct TIME TIMER_Echo2;
 struct TIME TIMER_Reset;
 struct TIME TIMER_Ouverture;
 struct TIME TIMER_Reconnect;
+struct TIME TIMER_Scan;
 
 struct _IN
 {
@@ -203,21 +204,28 @@ struct _STATES
 #define PIN_TRIG1 9 // trigger echo portillon
 #define PIN_TRIG2 8 // trigger echo portail
 
-//const BLEUUID Tag_Vocolinc = BLEUUID(std::string("0000fd44-0000-1000-8000-00805f9b34fb"));
-//const BLEUUID Tag_SmartTag = BLEUUID(std::string("0000fd5a-0000-1000-8000-00805f9b34fb"));
+// UUID du tag
+static const BLEUUID Tag_Vocolinc("0000fd44-0000-1000-8000-00805f9b34fb"); // tag identique pour les 2 badges
+static const BLEUUID Tag_SmartTag("0000fd5a-0000-1000-8000-00805f9b34fb");
+static const BLEUUID Tag_BiggerFive("00000af0-0000-1000-8000-00805f9b34fb");
 
-const std::string Tag_VocolincA = std::string("0000fd44-0000-1000-8000-00805f9b34fb");
-const std::string Tag_SmartTagA = std::string("0000fd5a-0000-1000-8000-00805f9b34fb");
+// Derniere valeur RSSI trouvé (db)
+static int Rssi_Vocolinc = -1000;
+static int Rssi_SmartTag = -1000;
+static int Rssi_BiggerFive = -1000;
+
+// Timer scan BLE Tag avant abandon
+#define PARAM_TIMER_SCAN 10 //En secondes
 
 // Timer avant reset du G7 principal
 // Prévient un éventuel bloquage dans une étape autre que 0,10,11
-#define PARAM_TIMER_BEFORE_RESET 60 //En nb cycles
+#define PARAM_TIMER_BEFORE_RESET 60 //En secondes
 
 // Temps de présence de l'écho 1 et 2 avant ouverture portail
-#define PARAM_TIMER_PRESENCE_ECHO_1_2 2 //En nb cycles
+#define PARAM_TIMER_PRESENCE_ECHO_1_2 2 //En secondes
 
 // Temps de scan du tag
-#define PARAM_TIMER_SCAN_TAG 5 //En seconds
+#define PARAM_SCAN_DURATION 4 //En seconds
 
 // Temps d'attente après ouverture portail
 #define PARAM_TIMER_OUVERTURE 10 //En seconds
@@ -240,17 +248,25 @@ BLEScan *pBLEScan;
 #if defined(DEBUG)
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice device) {
-#if defined(FULL_LOGS)
-      Serial.printf("Advertised Device: %s \n", device.toString().c_str());
-#endif
+        if (device.haveServiceUUID())
+        {
+          Serial.print("Advertised Device: ");
+          Serial.print(device.getName().c_str());
+          Serial.print(", ");
+          Serial.print(device.getRSSI());
+          Serial.print("db, ");
+          Serial.print(device.getServiceUUID().toString().c_str());
+          Serial.println("");
+        }
     }
 };
 #endif
 
 void EndofScan(BLEScanResults results) {
-#if defined(FULL_LOGS)
+#if defined(DEBUG)
     Serial.println("EndofScan");
 #endif
+
     for(int i=0;i<results.getCount();i++)
     {
         BLEAdvertisedDevice device = results.getDevice(i);
@@ -258,33 +274,21 @@ void EndofScan(BLEScanResults results) {
         // On récupère le RSSI
         int rssi = device.getRSSI();
         
-        if (device.haveServiceUUID() && rssi > (PARAM_BLE_TAG_RSSI_MAX + STATES.rssi_add))
+        if (device.haveServiceUUID())
         {
           BLEUUID devUUID = device.getServiceUUID();
 
-          if (devUUID.toString().compare(Tag_VocolincA) == 0)
+          if (devUUID.equals(Tag_Vocolinc))
           {
-            STATES.UUID_Identifie = 1;
-#if defined(FULL_LOGS)
-            Serial.print("Found ServiceUUID: [");
-            Serial.print(STATES.UUID_Identifie);
-            Serial.print("] ");
-            Serial.print(devUUID.toString().c_str());
-            Serial.println("");
-#endif
-            break;
+            Rssi_Vocolinc = rssi;
           }
-          if (devUUID.toString().compare(Tag_SmartTagA) == 0)
+          if (devUUID.equals(Tag_SmartTag))
           {
-            STATES.UUID_Identifie = 2;
-#if defined(FULL_LOGS)
-            Serial.print("Found ServiceUUID: [");
-            Serial.print(STATES.UUID_Identifie);
-            Serial.print("] ");
-            Serial.print(devUUID.toString().c_str());
-            Serial.println("");
-#endif
-            break;
+            Rssi_SmartTag = rssi;
+          }
+          if (devUUID.equals(Tag_BiggerFive))
+          {
+            Rssi_BiggerFive = rssi;
           }
         }
     }
@@ -310,6 +314,7 @@ void setup() {
   TIMER_Init(&TIMER_Ouverture, "Attente ouverture portail");
   TIMER_Init(&TIMER_Reset, "Reset");
   TIMER_Init(&TIMER_Reconnect, "Attente reconnection");
+  TIMER_Init(&TIMER_Scan, "Scan Tag BLE");
 
   Serial.begin(9600);
 
@@ -339,15 +344,16 @@ void setup() {
   OUT.Led = LED_VERT;
   
   
-  BLEDevice::init("");
+  BLEDevice::init("ESP32");
   BLEDevice::setMTU(23);//BLE spec default
   pBLEScan = BLEDevice::getScan(); //create new scan
 #if defined(DEBUG)
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
 #endif
-  pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
+  pBLEScan->setActiveScan(true); //Plus d'infos, mais consomme plus d'énergie et est détectable.
+//  pBLEScan->setActiveScan(false); //Moins d'infos, discret, économe (probleme le Tag semble dormir au bout d'un moment)
   pBLEScan->setInterval(100);
-  pBLEScan->setWindow(99); // less or equal setInterval value
+  pBLEScan->setWindow(100); // less or equal setInterval value
 
 
   delay(3000);
@@ -360,15 +366,86 @@ void setup() {
 }
 
 int count = 0;
+unsigned long scanStartTime = 0;
+unsigned long cyclesExceeded = 0; // nombre de cycles dépassés
+unsigned long cyclesOverflow = 0; // dépasssement en ms
+int distanceEcho1 = 0;
+int distanceEcho2 = 0;
+
+void waitCycle() {
+    unsigned long elapsed = millis() - scanStartTime;
+    if (elapsed < 500) // cycle pas encore écoulé
+      delay(500 - elapsed);
+    else
+    {
+      cyclesExceeded++;
+      cyclesOverflow = 500 - elapsed;
+    }
+
+    // Cycle ≥ 500ms atteint, on relance
+    scanStartTime = millis();
+}
 
 void loop()
 {
+  // pour debug
+#if defined(DEBUG)
+  static char message[200];
+
+  if(count % 2 == 0) // pas au dessous de 1sec max
+  {
+    snprintf(message, sizeof(message), 
+            "{\"distanceEcho1\":%d,\"distanceEcho2\":%d}", 
+            distanceEcho1, distanceEcho2);
+    publishDebug(message);
+
+    if(cyclesOverflow != 0)
+    {
+      Serial.print("Depassements de cycles: ");
+      Serial.print(cyclesExceeded);
+      Serial.print(", ");
+      Serial.print(cyclesOverflow);
+      Serial.println("ms");
+
+      cyclesOverflow = 0;
+    }
+
+    if(STATES.bEndofScan == true && G7_Principal.etape != 20)
+    {
+      Serial.print("start debug scan at ");
+      Serial.println(count);
+
+      snprintf(message, sizeof(message), 
+              "{\"Rssi_Vocolinc\":%d,\"Rssi_SmartTag\":%d,\"Rssi_BiggerFive\":%d}", 
+              Rssi_Vocolinc, Rssi_SmartTag, Rssi_BiggerFive);
+      publishDebug(message);
+
+
+      STATES.bEndofScan = false;
+      
+      Rssi_Vocolinc = -1000;
+      Rssi_SmartTag = -1000;
+      Rssi_BiggerFive = -1000;
+
+      pBLEScan->start(PARAM_SCAN_DURATION, EndofScan);// appel non-bloquant jusque la fin du scan
+    }
+  }
+#endif
+
   Inputs();
 
   // TEMPORAIRE ----------------------------------------------------------------
   // pour le moment on associe un seul echo
   IN.Echo1 = IN.Echo2;
   // TEMPORAIRE ----------------------------------------------------------------
+
+  // etats calculés ----------------------------------------------------------------
+  // Badge identifié
+  STATES.UUID_Identifie = 
+    Rssi_Vocolinc > (PARAM_BLE_TAG_RSSI_MAX + STATES.rssi_add) ? 1 :
+    Rssi_SmartTag > (PARAM_BLE_TAG_RSSI_MAX + STATES.rssi_add) ? 2 :
+    Rssi_BiggerFive > (PARAM_BLE_TAG_RSSI_MAX + STATES.rssi_add) ? 3 :
+    0;
 
   SEQ_Run(&G7_Principal);
   SEQ_Run(&G7_Reset);
@@ -378,7 +455,7 @@ void loop()
 
   Commandes();
 
-  delay(CYCLE_DURATION);
+  waitCycle();
 
   digitalWrite(LED_BUILTIN, count % 2 == 0 ? LOW : HIGH);
 
@@ -445,6 +522,7 @@ void Inputs()
   // Si rien n'est reçu après 20ms, la fonction rend la main immédiatement
   auto duration = pulseIn(PIN_ECHO1, HIGH, 20000);
   auto distance = (duration*.0343)/2; // cm
+  distanceEcho1 = distance;
 #if defined(FULL_LOGS)
   Serial.print("distance1: ");
   Serial.println(distance);
@@ -466,6 +544,7 @@ void Inputs()
   // Si rien n'est reçu après 20ms, la fonction rend la main immédiatement
   duration = pulseIn(PIN_ECHO2, HIGH, 20000);
   distance = (duration*.0343)/2; // cm
+  distanceEcho2 = distance;
 #if defined(FULL_LOGS)
   Serial.print("distance2: ");
   Serial.println(distance);
@@ -580,40 +659,39 @@ void g7_principal(SEQ * seq)
       // Front montant
       if(seq->etape_front)
       {
-          // Lecture badge
-#if defined(FULL_LOGS)
-          Serial.println("start scan");
-#endif
-          STATES.bEndofScan = false;
-          STATES.UUID_Identifie = 0;
-          pBLEScan->start(PARAM_TIMER_SCAN_TAG, EndofScan);// appel non-bloquant jusque la fin du scan, assigne UUID_Identifie
+        TIMER_Raz(&TIMER_Scan);
+          
+        Rssi_Vocolinc = -1000;
+        Rssi_SmartTag = -1000;
+        Rssi_BiggerFive = -1000;
+
+        STATES.UUID_Identifie = 0;
       }
 
       // Lecture OK
       if(STATES.bEndofScan == true)
       {
-        seq->desc = "fin lecture badge";
-        seq->etape = 21;
+        if(STATES.UUID_Identifie != 0)
+        {
+          seq->desc = "Identification OK";
+          seq->etape = 30;
+        }
+        else
+        {
+            // on continue le scan
+#if defined(FULL_LOGS)
+          Serial.println("continue scan");
+#endif
+          STATES.bEndofScan = false;
+
+          pBLEScan->start(PARAM_SCAN_DURATION, EndofScan);// appel non-bloquant jusque la fin du scan
+        }
       }
 
-      return;
-  }
-  
-  if(seq->etape == 21)
-  {
-      seq->desc = "Identification badge";
-
-      Serial.println("UUID_Identifie");
-      Serial.println(STATES.UUID_Identifie);
-      // Identification OK ?
-      if(STATES.UUID_Identifie != 0)
+      // Echec
+      if(TIMER(&TIMER_Scan, STATES.UUID_Identifie != 0) > PARAM_TIMER_SCAN)
       {
-        seq->desc = "identification OK";
-        seq->etape = 30;
-      }
-      else
-      {
-        seq->desc = "identification échouée";
+        seq->desc = "Identification échouée";
         seq->etape = 10;
       }
 
@@ -833,6 +911,7 @@ void g7_commandes(SEQ * seq)
       if(seq->etape_front)
       {
         TIMER_Raz(&TIMER_Reconnect);
+        switchWifi();
       }
 
       // Attente 30 sec
