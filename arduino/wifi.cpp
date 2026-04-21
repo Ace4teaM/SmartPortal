@@ -3,6 +3,7 @@
 
 void checkSignal() {
   int n = WiFi.scanNetworks();
+
   for (int i = 0; i < n; ++i) {
     Serial.print("Signal trouvé : ");
     Serial.print(WiFi.SSID(i));
@@ -13,7 +14,9 @@ void checkSignal() {
 }
 
 void setupWifi() {
-    Serial.println("Connexion au WiFi...");
+    Serial.print("Connexion au WiFi...");
+    Serial.print(SECRET_SSID);
+    Serial.println();
     checkSignal();
     WiFi.begin(SECRET_SSID, SECRET_PASSWORD, 0, NULL, true);
 }
@@ -23,6 +26,27 @@ int statusWifi() {
   if (status == WL_CONNECTED)
       return 1;
   return 0;
+}
+
+int wifi = 0;
+void switchWifi()
+{
+    wifi = wifi == 0 ? 1 : 0;
+    WiFi.disconnect(false, true);
+    if(wifi == 0)
+    {
+        Serial.print("Connexion au WiFi...");
+        Serial.print(SECRET_SSID);
+        Serial.println();
+        WiFi.begin(SECRET_SSID, SECRET_PASSWORD, 0, NULL, true);
+    }
+    else
+    {
+        Serial.print("Connexion au WiFi...");
+        Serial.print(SECRET_SSID_BIS);
+        Serial.println();
+        WiFi.begin(SECRET_SSID_BIS, SECRET_PASSWORD_BIS, 0, NULL, true);
+    }
 }
 
 int connectWifi() {

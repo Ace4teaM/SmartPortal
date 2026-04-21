@@ -6,5 +6,6 @@
 int statusWifi();
 void setupWifi();
 int connectWifi();
+void switchWifi();
 
 #endif
