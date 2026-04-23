@@ -42,9 +42,7 @@ typedef struct TIME{
 
 float TIMER(TIME* tm, bool expression)
 {
-    if(expression == false)
-      tm->count = 0;
-    else
+    if(expression)
     {
       tm->count++;
       
@@ -75,6 +73,13 @@ void TIMER_Raz(TIME* tm)
   Serial.println();
 #endif
   tm->count = 0;
+}
+
+void TIMER_Debug(TIME* time) {
+  Serial.print(time->name);
+  Serial.print(" -> count:");
+  Serial.print(time->count);
+  Serial.println();
 }
 
 void SEQ_Debug(SEQ* seq) {
@@ -245,7 +250,7 @@ static int TagsRSSI[]={
 
 // Distance de détection min/max de la présence d'une personne/voiture (>= min && <= max)
 #define PARAM_DIST_ECHO_MIN 1.0 // En cm
-#define PARAM_DIST_ECHO_MAX 200.0 // En cm
+#define PARAM_DIST_ECHO_MAX 300.0 // En cm
 
 // Signal max pour déclenchement
 // Le RSSI est une valeur négative exprimée en dBm.
@@ -274,13 +279,12 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice device) {
         if (device.haveServiceUUID())
         {
-          Serial.print("Advertised Device: ");
-          Serial.print(device.getName().c_str());
-          Serial.print(", ");
-          Serial.print(device.getRSSI());
-          Serial.print("db, ");
-          Serial.print(device.getServiceUUID().toString().c_str());
-          Serial.println("");
+          static char message[200];
+
+          snprintf(message, sizeof(message), "%s: %d db, %s", device.getName().c_str(), device.getRSSI(), device.getServiceUUID().toString().c_str());
+          Serial.println(message);
+
+          publish("esp32/adversing", message);
         }
     }
 };
@@ -480,13 +484,13 @@ void loop()
     publish("esp32/UUID_Identifie", message);
   }
 
-  if(G7_Principal.etape != G7_Principal.etape_prec)
+  if(G7_Principal.etape != G7_Principal.etape_prec || G7_Principal.desc != G7_Principal.desc_prec)
     SEQ_Debug(&G7_Principal);
 
-  if(G7_Reset.etape != G7_Reset.etape_prec)
+  if(G7_Reset.etape != G7_Reset.etape_prec || G7_Reset.desc != G7_Reset.desc_prec)
     SEQ_Debug(&G7_Reset);
 
-  if(G7_Commandes.etape != G7_Commandes.etape_prec)
+  if(G7_Commandes.etape != G7_Commandes.etape_prec || G7_Commandes.desc != G7_Commandes.desc_prec)
     SEQ_Debug(&G7_Commandes);
 
   if(memcmp(&STATES, &STATES_PREV, sizeof(_STATES)) != 0)
@@ -537,7 +541,7 @@ void Inputs()
   digitalWrite(PIN_TRIG1, LOW);
   // Ajout d'un TIMEOUT de 20000 µs (~3 mètres max)
   // Si rien n'est reçu après 20ms, la fonction rend la main immédiatement
-  auto duration = pulseIn(PIN_ECHO1, HIGH, 20000);
+  auto duration = pulseIn(PIN_ECHO1, HIGH, 20000); // µs == ~3.4metres
   auto distance = (duration*.0343)/2; // cm
   distanceEcho1 = distance;
 #if defined(FULL_LOGS)
@@ -694,10 +698,9 @@ void g7_principal(SEQ * seq)
         }
         else
         {
-            // on continue le scan
-#if defined(FULL_LOGS)
-          Serial.println("continue scan");
-#endif
+          // on continue le scan
+          seq->desc = "Scan des tags...";
+
           STATES.bEndofScan = false;
 
           pBLEScan->start(PARAM_SCAN_DURATION, EndofScan);// appel non-bloquant jusque la fin du scan
@@ -705,7 +708,7 @@ void g7_principal(SEQ * seq)
       }
 
       // Echec
-      if(TIMER(&TIMER_Scan, STATES.UUID_Identifie != 0) > PARAM_TIMER_SCAN)
+      if(TIMER(&TIMER_Scan, STATES.UUID_Identifie == 0) > PARAM_TIMER_SCAN)
       {
         seq->desc = "Identification échouée";
         seq->etape = 10;
@@ -740,6 +743,10 @@ void g7_principal(SEQ * seq)
         seq->desc = "Presence echo autre (!= 1 et 2), ouverture portillon";
         seq->etape = 41;
       }
+
+#if defined(debug)
+      TIMER_Debug(&TIMER_Echo);
+#endif
 
       return;
   }
