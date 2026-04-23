@@ -28,7 +28,8 @@ void publishOutputsMqtt(
   int OUT_Led,
   int OUT_EchoTrigger
 );
-void publishDebug(
+void publish(
+  const char* topic,
   const char* message
 );
 

@@ -173,12 +173,13 @@ void publishOutputsMqtt(
   }
 }
 
-void publishDebug(
+void publish(
+  const char* topic,
   const char* message
 ) {
 
   if(client.connected()) {
-    client.publish("esp32/debug", message);
+    client.publish(topic, message);
   }
 }
 

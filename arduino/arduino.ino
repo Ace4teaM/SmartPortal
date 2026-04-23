@@ -4,13 +4,16 @@
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEScan.h>
+#include <BLEAddress.h>
 #include <BLEAdvertisedDevice.h>
 #include <BLEEddystoneURL.h>
 #include <BLEEddystoneTLM.h>
 #include <BLEBeacon.h>
+#include <BLEClient.h>
 
 #include "wifi.h"
 #include "mqtt.h"
+#include "secrets.h"
 
 //#define FULL_LOGS
 #define DEBUG
@@ -204,15 +207,20 @@ struct _STATES
 #define PIN_TRIG1 9 // trigger echo portillon
 #define PIN_TRIG2 8 // trigger echo portail
 
-// UUID du tag
-static const BLEUUID Tag_Vocolinc("0000fd44-0000-1000-8000-00805f9b34fb"); // tag identique pour les 2 badges
-static const BLEUUID Tag_SmartTag("0000fd5a-0000-1000-8000-00805f9b34fb");
-static const BLEUUID Tag_BiggerFive("00000af0-0000-1000-8000-00805f9b34fb");
+// Tags
+static const BLEUUID TagsUUID[]={
+  BLEUUID(BLE_ACCEPT_UUID_1),
+  BLEUUID(BLE_ACCEPT_UUID_2),
+  BLEUUID(BLE_ACCEPT_UUID_3),
+  BLEUUID(BLE_ACCEPT_UUID_4)
+};
 
-// Derniere valeur RSSI trouvé (db)
-static int Rssi_Vocolinc = -1000;
-static int Rssi_SmartTag = -1000;
-static int Rssi_BiggerFive = -1000;
+static int TagsRSSI[]={
+  -1000,
+  -1000,
+  -1000,
+  -1000
+};
 
 // Timer scan BLE Tag avant abandon
 #define PARAM_TIMER_SCAN 10 //En secondes
@@ -245,6 +253,20 @@ static int Rssi_BiggerFive = -1000;
 
 BLEScan *pBLEScan;
 
+int count = 0;
+
+unsigned long scanStartTime = 0;
+unsigned long cyclesExceeded = 0; // nombre de cycles dépassés
+unsigned long cyclesOverflow = 0; // dépasssement en ms
+
+#if defined(DEBUG)
+int distanceEcho1 = 0;
+int distanceEcho2 = 0;
+int _distanceEcho1 = 0;
+int _distanceEcho2 = 0;
+int _UUID_Identifie = 0;
+#endif
+
 #if defined(DEBUG)
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice device) {
@@ -267,30 +289,27 @@ void EndofScan(BLEScanResults results) {
     Serial.println("EndofScan");
 #endif
 
-    for(int i=0;i<results.getCount();i++)
+    for(size_t j=0; j < sizeof(TagsUUID)/sizeof(TagsUUID[0]); j++)
     {
-        BLEAdvertisedDevice device = results.getDevice(i);
+      TagsRSSI[j] = -1000;
 
-        // On récupère le RSSI
-        int rssi = device.getRSSI();
-        
-        if (device.haveServiceUUID())
-        {
-          BLEUUID devUUID = device.getServiceUUID();
+      for(int i=0; i < results.getCount(); i++)
+      {
+          BLEAdvertisedDevice device = results.getDevice(i);
 
-          if (devUUID.equals(Tag_Vocolinc))
+          // On récupère le RSSI
+          int rssi = device.getRSSI();
+          
+          if (device.haveServiceUUID())
           {
-            Rssi_Vocolinc = rssi;
+            BLEUUID devUUID = device.getServiceUUID();
+
+            if (devUUID.equals(TagsUUID[j]))
+            {
+              TagsRSSI[j] = rssi;
+            }
           }
-          if (devUUID.equals(Tag_SmartTag))
-          {
-            Rssi_SmartTag = rssi;
-          }
-          if (devUUID.equals(Tag_BiggerFive))
-          {
-            Rssi_BiggerFive = rssi;
-          }
-        }
+      }
     }
     pBLEScan->clearResults(); // libère la mémoire
     STATES.bEndofScan = true;
@@ -363,14 +382,9 @@ void setup() {
   Serial.println("Initialized");
   Serial.println("************************************");
   Serial.println();
-}
 
-int count = 0;
-unsigned long scanStartTime = 0;
-unsigned long cyclesExceeded = 0; // nombre de cycles dépassés
-unsigned long cyclesOverflow = 0; // dépasssement en ms
-int distanceEcho1 = 0;
-int distanceEcho2 = 0;
+  scanStartTime = millis();
+}
 
 void waitCycle() {
     unsigned long elapsed = millis() - scanStartTime;
@@ -392,13 +406,12 @@ void loop()
 #if defined(DEBUG)
   static char message[200];
 
+  _distanceEcho1 = distanceEcho1;
+  _distanceEcho2 = distanceEcho2;
+  _UUID_Identifie = STATES.UUID_Identifie;
+
   if(count % 2 == 0) // pas au dessous de 1sec max
   {
-    snprintf(message, sizeof(message), 
-            "{\"distanceEcho1\":%d,\"distanceEcho2\":%d}", 
-            distanceEcho1, distanceEcho2);
-    publishDebug(message);
-
     if(cyclesOverflow != 0)
     {
       Serial.print("Depassements de cycles: ");
@@ -408,26 +421,6 @@ void loop()
       Serial.println("ms");
 
       cyclesOverflow = 0;
-    }
-
-    if(STATES.bEndofScan == true && G7_Principal.etape != 20)
-    {
-      Serial.print("start debug scan at ");
-      Serial.println(count);
-
-      snprintf(message, sizeof(message), 
-              "{\"Rssi_Vocolinc\":%d,\"Rssi_SmartTag\":%d,\"Rssi_BiggerFive\":%d}", 
-              Rssi_Vocolinc, Rssi_SmartTag, Rssi_BiggerFive);
-      publishDebug(message);
-
-
-      STATES.bEndofScan = false;
-      
-      Rssi_Vocolinc = -1000;
-      Rssi_SmartTag = -1000;
-      Rssi_BiggerFive = -1000;
-
-      pBLEScan->start(PARAM_SCAN_DURATION, EndofScan);// appel non-bloquant jusque la fin du scan
     }
   }
 #endif
@@ -441,11 +434,16 @@ void loop()
 
   // etats calculés ----------------------------------------------------------------
   // Badge identifié
-  STATES.UUID_Identifie = 
-    Rssi_Vocolinc > (PARAM_BLE_TAG_RSSI_MAX + STATES.rssi_add) ? 1 :
-    Rssi_SmartTag > (PARAM_BLE_TAG_RSSI_MAX + STATES.rssi_add) ? 2 :
-    Rssi_BiggerFive > (PARAM_BLE_TAG_RSSI_MAX + STATES.rssi_add) ? 3 :
-    0;
+  
+  STATES.UUID_Identifie = 0;
+  for(size_t j=0; j < sizeof(TagsUUID)/sizeof(TagsUUID[0]); j++)
+  {
+    if(TagsRSSI[j] > (PARAM_BLE_TAG_RSSI_MAX + STATES.rssi_add))
+    {
+      STATES.UUID_Identifie = j;
+      break;
+    }
+  }
 
   SEQ_Run(&G7_Principal);
   SEQ_Run(&G7_Reset);
@@ -461,8 +459,25 @@ void loop()
 
   count++;
 
-  
 #if defined(DEBUG)
+  if(abs(distanceEcho1 - _distanceEcho1) > 5)
+  {
+    snprintf(message, sizeof(message), "%d", distanceEcho1);
+    publish("esp32/distanceEcho1", message);
+  }
+  
+  if(abs(distanceEcho2 - _distanceEcho2) > 5)
+  {
+    snprintf(message, sizeof(message), "%d", distanceEcho2);
+    publish("esp32/distanceEcho2", message);
+  }
+
+  if(STATES.UUID_Identifie != _UUID_Identifie)
+  {
+    snprintf(message, sizeof(message), "%d", STATES.UUID_Identifie);
+    publish("esp32/UUID_Identifie", message);
+  }
+
   if(G7_Principal.etape != G7_Principal.etape_prec)
     SEQ_Debug(&G7_Principal);
 
@@ -661,9 +676,8 @@ void g7_principal(SEQ * seq)
       {
         TIMER_Raz(&TIMER_Scan);
           
-        Rssi_Vocolinc = -1000;
-        Rssi_SmartTag = -1000;
-        Rssi_BiggerFive = -1000;
+        for(size_t j=0; j < sizeof(TagsUUID)/sizeof(TagsUUID[0]); j++)
+          TagsRSSI[j] = -1000;
 
         STATES.UUID_Identifie = 0;
       }
