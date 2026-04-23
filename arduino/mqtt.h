@@ -1,3 +1,5 @@
+#include <PubSubClient.h>
+
 #ifndef MQTT_H
 #define MQTT_H
 

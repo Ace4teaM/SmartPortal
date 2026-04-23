@@ -88,8 +88,10 @@ void SEQ_Debug(SEQ* seq) {
   Serial.print(" -> duree:");
   Serial.print(seq->duree);
   Serial.println();
+  Serial.println(seq->desc);
 
   publishSeqMqtt(seq->name, seq->init, seq->initialized, seq->etape, seq->duree);
+  publish(seq->name, seq->desc);
 }
 
 void SEQ_Init(SEQ * seq, const char* name, void (*func)(SEQ *))
@@ -243,7 +245,7 @@ static int TagsRSSI[]={
 
 // Distance de détection min/max de la présence d'une personne/voiture (>= min && <= max)
 #define PARAM_DIST_ECHO_MIN 1.0 // En cm
-#define PARAM_DIST_ECHO_MAX 50.0 // En cm
+#define PARAM_DIST_ECHO_MAX 200.0 // En cm
 
 // Signal max pour déclenchement
 // Le RSSI est une valeur négative exprimée en dBm.
@@ -440,7 +442,7 @@ void loop()
   {
     if(TagsRSSI[j] > (PARAM_BLE_TAG_RSSI_MAX + STATES.rssi_add))
     {
-      STATES.UUID_Identifie = j;
+      STATES.UUID_Identifie = j+1; // 0 = non trouvé
       break;
     }
   }
