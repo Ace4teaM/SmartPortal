@@ -45,15 +45,21 @@ float TIMER(TIME* tm, bool expression)
     if(expression == true)
     {
       tm->count++;
-      
-#if defined(FULL_LOGS)
-      Serial.print("TIMER : ");
-      Serial.print(tm->name);
-      Serial.print("(");
-      Serial.print(tm->count);
-      Serial.print(")");
-      Serial.println();
-#endif
+    }
+
+    return (float)tm->count * CYCLE_IN_SECOND;
+}
+
+// reset auto si l'expression tombe à false
+float TIMER_AUTO_RESET(TIME* tm, bool expression)
+{
+    if(expression == true)
+    {
+      tm->count++;
+    }
+    else
+    {
+      tm->count = 0;
     }
 
     return (float)tm->count * CYCLE_IN_SECOND;
