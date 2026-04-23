@@ -42,7 +42,7 @@ typedef struct TIME{
 
 float TIMER(TIME* tm, bool expression)
 {
-    if(expression)
+    if(expression == true)
     {
       tm->count++;
       
@@ -171,6 +171,7 @@ struct SEQ G7_Commandes;
 struct TIME TIMER_Echo;
 struct TIME TIMER_Echo2;
 struct TIME TIMER_Reset;
+struct TIME TIMER_Reset2;
 struct TIME TIMER_Ouverture;
 struct TIME TIMER_Reconnect;
 struct TIME TIMER_Scan;
@@ -337,7 +338,8 @@ void setup() {
   TIMER_Init(&TIMER_Echo, "Echo portail");
   TIMER_Init(&TIMER_Echo2, "Echo portillon");
   TIMER_Init(&TIMER_Ouverture, "Attente ouverture portail");
-  TIMER_Init(&TIMER_Reset, "Reset");
+  TIMER_Init(&TIMER_Reset, "Reset Principal");
+  TIMER_Init(&TIMER_Reset2, "Reset Commandes");
   TIMER_Init(&TIMER_Reconnect, "Attente reconnection");
   TIMER_Init(&TIMER_Scan, "Scan Tag BLE");
 
@@ -819,12 +821,19 @@ void g7_reset(SEQ * seq)
     if(seq->etape_front || G7_Principal.etape != G7_Principal.etape_prec)
     {
       TIMER_Raz(&TIMER_Reset);
+      TIMER_Raz(&TIMER_Reset2);
     }
 
     // +10sec dans une étape et pas en initialisation ou erreur
     if(G7_Principal.etape != 0 && G7_Principal.etape != 10 && G7_Principal.etape != 11 && TIMER(&TIMER_Reset, true) > PARAM_TIMER_BEFORE_RESET /*&& G7_Principal.duree > PARAM_TIMER_BEFORE_RESET*/)
     {
       seq->etape = 10;
+    }
+    
+    // +10sec dans une étape et pas en initialisation ou erreur
+    if(G7_Commandes.etape != 0 && G7_Commandes.etape != 1 && G7_Commandes.etape != 11 && TIMER(&TIMER_Reset2, true) > PARAM_TIMER_BEFORE_RESET /*&& G7_Commandes.duree > PARAM_TIMER_BEFORE_RESET*/)
+    {
+      seq->etape = 11;
     }
     
     // bouton reset
@@ -843,6 +852,19 @@ void g7_reset(SEQ * seq)
     seq->desc = "Reset !";
 
     SEQ_Reset(&G7_Principal);
+    // orange
+    OUT.Led = LED_ORANGE;
+    
+    seq->etape = 0;
+    return;
+  }
+  
+  // Reset !
+  if(seq->etape == 11)
+  {
+    seq->desc = "Reset !";
+
+    SEQ_Reset(&G7_Commandes);
     // orange
     OUT.Led = LED_ORANGE;
     
