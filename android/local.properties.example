@@ -1,0 +1,14 @@
+# géolocalisation du portail
+TARGET_LAT=0.0
+TARGET_LNG=0.0
+
+# distance du point de RDV en metres
+TARGET_RADIUS=200.0
+
+# Ble UUID secret à émettre pour ouvrir le portail
+BLE_UUID=your-uuid-here
+
+# temps de diffusion du UUID lors du déclenchement
+ADVERTISING_DURATION_MS=10000
+
+
