@@ -257,7 +257,7 @@ static int TagsRSSI[]={
 // Le RSSI est une valeur négative exprimée en dBm.
 // Plus la valeur est proche de 0, plus l'appareil est près (ex: -40 dBm).
 // Plus la valeur est petite, plus l'appareil est loin (ex: -95 dBm).
-#define PARAM_BLE_TAG_RSSI_MAX -80
+#define PARAM_BLE_TAG_RSSI_MAX -100 // a ajuster en fonction de l'environnement
 
 BLEScan *pBLEScan;
 
