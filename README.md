@@ -1,7 +1,7 @@
 # SmartPortal
-Un projet arduino de gestion d'ouverture/fermeture de portail basé sur les SmartTag
+Un projet **Arduino** de gestion d'ouverture/fermeture de **portail** via un **SmartTag BLE**.
 
-
+![intro](image.jpg)
 
 # Arduino
 
@@ -57,7 +57,7 @@ Le problème des tags du commerce (environnement clos pas de contrôle sur le mo
 
 **Voccolink** : Passe en mode veille
 
-**Echo SmartTag** : Inutilisable ?
+**Echo SmartTag** : Inutilisable.
 
 ## Simulateur
 
