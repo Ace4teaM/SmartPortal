@@ -246,6 +246,16 @@ Le Grafcet suivant représente le fonctionnement du RESET :
 
 ![g7 reset](assets/g7-reset-2.png)
 
+# Le problème du signal BLE dans l'environnement
+
+Dans mon cas l'Arduino (le récepteur BLE) est situé coté intérieur (derrière le mur en béton armé).
+
+Problème: le signal est fortement affaiblie coté rue par rapport au coté court.
+
+En effet, l'antenne se situe directement sur la puce de l'Arduino. Lorsque l'on souhaite estimé la distance avec le badge je dois artificiellement accepter un signal faible pour le détecter hors un signal faible permet de détecter un badge se trouvant dans la maison par exemple. Ce qui pose problème car le portail pourrait s'ouvrir pour n'importe qui !
+
+Solution: je pense qu'il faudrait ajouter une antenne externe placé sur le mur, le signal serait ainsi identique des 2 cotés de celui-ci.
+
 # Intégration de la serrure électrique (la gâche électrique)
 
 Voici le modèle que j'ai commandé **OR-EZ-4029** pour **~30€**.
